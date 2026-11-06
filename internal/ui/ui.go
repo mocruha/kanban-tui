@@ -69,6 +69,25 @@ func (m *Model) clampCard() {
 	}
 }
 
+// moveCard move o card focado para a coluna target (append no fim) e leva o
+// cursor junto. Mesmo índice de origem fora do intervalo: no-op defensivo.
+func (m *Model) moveCard(target int) {
+	if target == m.col || target < 0 || target >= len(m.Board.Columns) {
+		return
+	}
+	src := &m.Board.Columns[m.col]
+	if m.card >= len(src.Cards) {
+		return
+	}
+	title := src.Cards[m.card]
+	src.Cards = append(src.Cards[:m.card], src.Cards[m.card+1:]...)
+	dst := &m.Board.Columns[target]
+	dst.Cards = append(dst.Cards, title)
+	m.col = target
+	m.card = len(dst.Cards) - 1
+	m.undo = nil
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -91,6 +110,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clampCard()
 		case "up":
 			m.card = max(m.card-1, 0)
+		case "1", "2", "3":
+			m.moveCard(int(msg.String()[0] - '1'))
 		case "down":
 			if n := len(m.cards(m.col)); n > 0 {
 				m.card = min(m.card+1, n-1)

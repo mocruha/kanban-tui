@@ -73,3 +73,29 @@ func TestWindowSizeMsg(t *testing.T) {
 		t.Errorf("visibleRows: queria 6, obtive %d", out.visibleRows)
 	}
 }
+
+func seededModel(t *testing.T, col0 ...string) Model {
+	t.Helper()
+	b := store.Default()
+	b.Columns[0].Cards = append(b.Columns[0].Cards, col0...)
+	return New(b, "/tmp/board-test.json")
+}
+
+func TestMoveCardToColumn(t *testing.T) {
+	m := seededModel(t, "a", "b")
+	m = send(t, m, "down") // foca "b"
+	m = send(t, m, "2")    // move para Fazendo
+	if got := m.cards(0); len(got) != 1 || got[0] != "a" {
+		t.Errorf("A Fazer deveria sobrar [a], obtive %#v", got)
+	}
+	if got := m.cards(1); len(got) != 1 || got[0] != "b" {
+		t.Errorf("Fazendo deveria ter [b], obtive %#v", got)
+	}
+	if m.col != 1 || m.card != 0 {
+		t.Errorf("cursor deveria seguir o card p/ (col 1, card 0), obtive (%d,%d)", m.col, m.card)
+	}
+	m = send(t, m, "2") // reclique o dígito da coluna atual: no-op, não duplica
+	if got := m.cards(1); len(got) != 1 {
+		t.Errorf("mover p/ a mesma coluna não deveria duplicar: %#v", got)
+	}
+}
