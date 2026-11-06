@@ -4,6 +4,8 @@
 package ui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -116,12 +118,64 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if n := len(m.cards(m.col)); n > 0 {
 				m.card = min(m.card+1, n-1)
 			}
+		case "n":
+			m.mode = modeNew
+			m.editingIdx = -1
+			m.ti.SetValue("")
+			m.ti.Focus()
+			return m, nil
+		case "enter":
+			cards := m.cards(m.col)
+			if len(cards) == 0 {
+				return m, nil
+			}
+			m.mode = modeEdit
+			m.editingIdx = m.card
+			m.ti.SetValue(cards[m.card])
+			m.ti.CursorEnd()
+			m.ti.Focus()
+			return m, nil
 		}
 		return m, nil
 	}
 	return m, nil
 }
 
-// placeholder temporário: as tarefas 6-9 substituem/adicionam.
-func (m Model) updateEditor(msg tea.KeyMsg) (tea.Model, tea.Cmd) { return m, nil }
-func (m Model) View() string                                     { return "" }
+// updateEditor trata teclas enquanto um título está sendo digitado.
+// Enter confirma (trim; vazio = descarta), Esc cancela sem tocar o board,
+// qualquer outra tecla vai para o textinput — por isso letras nunca
+// colidem com atalhos aqui (padrão da skill go-sqlite-tui-apps).
+func (m Model) updateEditor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.ti.Blur()
+		m.mode = modeBrowse
+		m.editingIdx = -1
+		return m, nil
+	case "enter":
+		title := strings.TrimSpace(m.ti.Value())
+		c := &m.Board.Columns[m.col]
+		if title != "" {
+			switch m.mode {
+			case modeNew:
+				c.Cards = append(c.Cards, title)
+				m.card = len(c.Cards) - 1
+			case modeEdit:
+				if m.editingIdx >= 0 && m.editingIdx < len(c.Cards) {
+					c.Cards[m.editingIdx] = title
+					m.card = m.editingIdx
+				}
+			}
+			m.undo = nil
+		}
+		m.ti.Blur()
+		m.mode = modeBrowse
+		m.editingIdx = -1
+		return m, nil
+	default:
+		var cmd tea.Cmd
+		m.ti, cmd = m.ti.Update(msg)
+		return m, cmd
+	}
+}
+func (m Model) View() string { return "" }

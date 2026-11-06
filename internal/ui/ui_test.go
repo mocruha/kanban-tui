@@ -99,3 +99,78 @@ func TestMoveCardToColumn(t *testing.T) {
 		t.Errorf("mover p/ a mesma coluna não deveria duplicar: %#v", got)
 	}
 }
+
+func TestAddCardByTyping(t *testing.T) {
+	m := send(t, newTestModel(), "n", "o", "i", "enter") // n abre input; digita "oi"
+	if got := m.cards(0); len(got) != 1 || got[0] != "oi" {
+		t.Errorf("novo card: queria [oi], obtive %#v", got)
+	}
+	if m.mode != modeBrowse {
+		t.Errorf("Enter deveria voltar a browse, modo=%d", m.mode)
+	}
+	if m.col != 0 || m.card != 0 {
+		t.Errorf("cursor deveria apontar p/ o card novo (0,0), obtive (%d,%d)", m.col, m.card)
+	}
+}
+
+func TestAddEmptyTitleDiscarded(t *testing.T) {
+	m := send(t, newTestModel(), "n", " ", "enter") // só espaço -> trim -> descarta
+	if got := m.cards(0); len(got) != 0 {
+		t.Errorf("título vazio não deveria criar card: %#v", got)
+	}
+}
+
+func TestAddCancelledByEsc(t *testing.T) {
+	m := send(t, newTestModel(), "n", "a", "b", "esc")
+	if got := m.cards(0); len(got) != 0 {
+		t.Errorf("Esc deveria cancelar sem gravar: %#v", got)
+	}
+	if m.mode != modeBrowse {
+		t.Error("Esc no editor deveria voltar a browse")
+	}
+}
+
+func TestEnterOpensEditorWithPrefilledValue(t *testing.T) {
+	m := seededModel(t, "comprar pão")
+	m = send(t, m, "enter")
+	if m.mode != modeEdit {
+		t.Fatalf("Enter sobre card deveria abrir modoEdit")
+	}
+	if m.ti.Value() != "comprar pão" {
+		t.Errorf("input pré-carregado: queria %q, obtive %q", "comprar pão", m.ti.Value())
+	}
+	if m.editingIdx != 0 {
+		t.Errorf("editingIdx deveria ser 0, obtive %d", m.editingIdx)
+	}
+}
+
+func TestEditCancelledKeepsOriginal(t *testing.T) {
+	m := seededModel(t, "antigo")
+	m = send(t, m, "enter", "x", "y", "esc") // digita e cancela
+	if got := m.cards(0); len(got) != 1 || got[0] != "antigo" {
+		t.Errorf("Esc na edição deveria preservar o título: %#v", got)
+	}
+}
+
+func TestCommitEditReplacesInPlace(t *testing.T) {
+	m := seededModel(t, "um", "dois", "tres")
+	m = send(t, m, "down", "down", "enter") // abre edição de "tres"
+	m.ti.SetValue("quatro")
+	m = send(t, m, "enter") // confirma
+	if got := m.cards(0); len(got) != 3 || got[2] != "quatro" {
+		t.Errorf("edição in-place: queria [um dois quatro], obtive %#v", got)
+	}
+	if m.card != 2 {
+		t.Errorf("cursor deveria ficar no card editado (2), obtive %d", m.card)
+	}
+}
+
+func TestCommitNewAppendsAtEnd(t *testing.T) {
+	m := seededModel(t, "um")
+	m = send(t, m, "n")
+	m.ti.SetValue("dois")
+	m = send(t, m, "enter")
+	if got := m.cards(0); len(got) != 2 || got[1] != "dois" || m.card != 1 {
+		t.Errorf("novo card vai p/ o fim com cursor: %#v cursor=(%d,%d)", got, m.col, m.card)
+	}
+}
