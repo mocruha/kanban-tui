@@ -4,10 +4,13 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"kanban/internal/store"
 )
@@ -205,4 +208,85 @@ func (m Model) updateEditor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 }
-func (m Model) View() string { return "" }
+// ---- estilos ----
+var (
+	colInactive = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
+	colActive   = colInactive.BorderForeground(lipgloss.Color("205"))
+	header      = lipgloss.NewStyle().Bold(true)
+	cardFocused = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("212"))
+	dim         = lipgloss.NewStyle().Faint(true)
+)
+
+// truncate corta por RUNES (acentos pt-BR ocupam 1 célula, 2 bytes —
+// len() de bytes desalinha a coluna inteira; padrão da skill).
+func truncate(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= w {
+		return s
+	}
+	return string([]rune(s)[:w-1]) + "…"
+}
+
+// columnView desenha uma coluna. outerW é a largura TOTAL da caixa (com borda
+// e padding); conteúdo = outerW-4. Cabeçalho sempre mostra o total, então a
+// lista pode ser cortada por altura sem esconder informação.
+func (m Model) columnView(i, outerW int) string {
+	col := m.Board.Columns[i]
+	active := i == m.col && m.mode == modeBrowse
+	content := outerW - 4
+
+	lines := []string{header.Render(fmt.Sprintf("%s (%d)", col.Title, len(col.Cards)))}
+	shown := min(len(col.Cards), m.visibleRows-1) // -1: reserva linha p/ "(+N)"
+	for j := 0; j < shown; j++ {
+		txt := truncate(col.Cards[j], content-3) // " ▸ " custa 3 células
+		if active && j == m.card {
+			lines = append(lines, cardFocused.Render(" ▸ "+txt))
+		} else {
+			lines = append(lines, "    "+txt)
+		}
+	}
+	if hidden := len(col.Cards) - shown; hidden > 0 {
+		lines = append(lines, dim.Render(fmt.Sprintf("    (+%d)", hidden)))
+	}
+	if m.mode != modeBrowse && i == m.col {
+		m.ti.Width = content - 3
+		lines = append(lines, " ✎ "+m.ti.View())
+	}
+	if active {
+		return colActive.Width(outerW).Render(strings.Join(lines, "\n"))
+	}
+	return colInactive.Width(outerW).Render(strings.Join(lines, "\n"))
+}
+
+// footer lista SÓ as teclas válidas agora (atalho morto treina o usuário a
+// ignorar a legenda — padrão da skill).
+func (m Model) footer() string {
+	if m.mode != modeBrowse {
+		return dim.Render(truncate("Enter confirma · Esc cancela", max(m.width, 30)))
+	}
+	parts := []string{"←→ coluna", "↑↓ card", "1-3 mover card", "n novo", "q sair"}
+	if len(m.cards(m.col)) > 0 {
+		parts = append(parts[:3], append([]string{"Enter editar", "d apagar"}, parts[3:]...)...)
+	}
+	if m.undo != nil {
+		parts = append(parts, "u desfazer")
+	}
+	return dim.Render(truncate(strings.Join(parts, " · "), max(m.width, 30)))
+}
+
+func (m Model) View() string {
+	w := max(m.width, 30)
+	outer := (w - 6) / 3
+	if outer < 12 {
+		outer = 12
+	}
+	cols := make([]string, len(m.Board.Columns))
+	for i := range m.Board.Columns {
+		cols[i] = m.columnView(i, outer)
+	}
+	top := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	head := fmt.Sprintf("kanban · %s · salva ao sair (q)", m.Path)
+	return head + "\n\n" + top + "\n\n" + m.footer() + "\n"
+}

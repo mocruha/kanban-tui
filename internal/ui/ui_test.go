@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -222,5 +224,49 @@ func TestDeleteOnEmptyColumnSafe(t *testing.T) {
 	m := send(t, newTestModel(), "d") // nenhuma coluna tem card
 	if m.undo != nil {
 		t.Error("apagar em coluna vazia deveria ser no-op")
+	}
+}
+
+func TestViewContents(t *testing.T) {
+	m := seededModel(t, "muito longo este título que não cabe na coluna e deve ser cortado")
+	m = send(t, m, "n")   // modo editor para checar render do input
+	m = send(t, m, "esc") // volta a browse
+	m.ti.SetValue("digitando") // (render do input é coberto em TestViewEditorVisible)
+	view := m.View()
+	for _, want := range []string{"A Fazer", "Fazendo", "Feito", "▸", "mover", "…"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("View deveria conter %q. View:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "u desfazer") {
+		t.Errorf("footer não deveria listar 'u' sem undo disponível:\n%s", view)
+	}
+}
+
+func TestViewEditorVisible(t *testing.T) {
+	m := newTestModel()
+	m = send(t, m, "n")
+	m.ti.SetValue("oi")
+	view := m.View()
+	if !strings.Contains(view, "oi") || !strings.Contains(view, "Enter confirma") {
+		t.Errorf("modo editor deveria mostrar input + dica:\n%s", view)
+	}
+}
+
+func TestViewRuneSafeTruncation(t *testing.T) {
+	// "café" acentuado: truncamento por len() de bytes quebraria o "…".
+	b := store.Default()
+	b.Columns[0].Cards = []string{"café ☕ café ☕ café ☕ café ☕ café ☕ café ☕ café ☕ café ☕"}
+	m := New(b, "/tmp/x.json")
+	m.width = 42 // colunas estreitas -> forçar truncamento
+	view := m.View()
+	if !strings.Contains(view, "café") || !strings.Contains(view, "…") {
+		t.Errorf("truncamento deveria preservar runes e indicar corte:\n%s", view)
+	}
+	// largura máxima: cada coluna (42-6)/3 = 12 outer -> 3 colunas não passam de 42+2
+	for _, line := range strings.Split(view, "\n") {
+		if utf8.RuneCountInString(line) > 44 {
+			t.Errorf("linha mais larga que o terminal (%d runes): %q", utf8.RuneCountInString(line), line)
+		}
 	}
 }
