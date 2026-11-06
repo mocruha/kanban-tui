@@ -174,3 +174,53 @@ func TestCommitNewAppendsAtEnd(t *testing.T) {
 		t.Errorf("novo card vai p/ o fim com cursor: %#v cursor=(%d,%d)", got, m.col, m.card)
 	}
 }
+
+func TestDeleteCard(t *testing.T) {
+	m := seededModel(t, "a", "b", "c")
+	m = send(t, m, "down", "down") // foca "c"
+	m = send(t, m, "d")
+	if got := m.cards(0); len(got) != 2 || got[1] != "b" {
+		t.Errorf("apagar 'c': queria [a b], obtive %#v", got)
+	}
+	if m.card != 1 {
+		t.Errorf("cursor deveria ter feito clamp p/ 1, obtive %d", m.card)
+	}
+	if m.undo == nil || m.undo.title != "c" || m.undo.idx != 2 {
+		t.Errorf("undo deveria guardar {col 0, idx 2, c}, obtive %#v", m.undo)
+	}
+}
+
+func TestUndoRestoresInPlace(t *testing.T) {
+	m := seededModel(t, "a", "b", "c")
+	m = send(t, m, "down", "d") // apaga "b"
+	m = send(t, m, "u")
+	if got := m.cards(0); len(got) != 3 || got[1] != "b" {
+		t.Errorf("undo deveria reinserir 'b' no índice 1: %#v", got)
+	}
+	if m.col != 0 || m.card != 1 {
+		t.Errorf("cursor deveria ir p/ o card restaurado, obtive (%d,%d)", m.col, m.card)
+	}
+	m = send(t, m, "u") // segundo u: no-op
+	if len(m.cards(0)) != 3 {
+		t.Error("undo sem estoque deveria ser no-op")
+	}
+}
+
+func TestMoveClearsUndo(t *testing.T) {
+	m := seededModel(t, "a", "b")
+	m = send(t, m, "d")
+	if m.undo == nil {
+		t.Fatal("d deveria gravar undo")
+	}
+	m = send(t, m, "2")
+	if m.undo != nil {
+		t.Error("mover deveria limpar undo")
+	}
+}
+
+func TestDeleteOnEmptyColumnSafe(t *testing.T) {
+	m := send(t, newTestModel(), "d") // nenhuma coluna tem card
+	if m.undo != nil {
+		t.Error("apagar em coluna vazia deveria ser no-op")
+	}
+}

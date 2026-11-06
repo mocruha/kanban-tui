@@ -90,6 +90,29 @@ func (m *Model) moveCard(target int) {
 	m.undo = nil
 }
 
+// deleteCard remove o card focado e guarda undo de 1 nível.
+func (m *Model) deleteCard() {
+	c := &m.Board.Columns[m.col]
+	if m.card >= len(c.Cards) {
+		return
+	}
+	m.undo = &undoEntry{col: m.col, idx: m.card, title: c.Cards[m.card]}
+	c.Cards = append(c.Cards[:m.card], c.Cards[m.card+1:]...)
+	m.clampCard()
+}
+
+// restoreUndo reinsere o último card apagado na posição original (clampada).
+func (m *Model) restoreUndo() {
+	if m.undo == nil {
+		return
+	}
+	c := &m.Board.Columns[m.undo.col]
+	i := min(m.undo.idx, len(c.Cards))
+	c.Cards = append(c.Cards[:i], append([]string{m.undo.title}, c.Cards[i:]...)...)
+	m.col, m.card = m.undo.col, i
+	m.undo = nil
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -114,6 +137,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.card = max(m.card-1, 0)
 		case "1", "2", "3":
 			m.moveCard(int(msg.String()[0] - '1'))
+		case "d":
+			m.deleteCard()
+		case "u":
+			m.restoreUndo()
 		case "down":
 			if n := len(m.cards(m.col)); n > 0 {
 				m.card = min(m.card+1, n-1)
