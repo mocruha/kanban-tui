@@ -1,6 +1,12 @@
 package store
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestDefault(t *testing.T) {
 	b := Default()
@@ -70,5 +76,32 @@ func TestLoadWrongColumnCount(t *testing.T) {
 	_, err := Load(p)
 	if err == nil {
 		t.Fatal("1 coluna deve dar erro (esperava 3)")
+	}
+}
+
+func TestSaveRoundTrip(t *testing.T) {
+	p := t.TempDir() + "/sub/board.json"
+	b := Default()
+	b.Columns[0].Cards = append(b.Columns[0].Cards, "café ☕", "ir ao médico")
+	if err := Save(p, b); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	data, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatalf("Save deveria criar diretório e arquivo: %v", err)
+	}
+	if !strings.Contains(string(data), "\"cards\"") {
+		t.Errorf("JSON deveria ser indentado legível, obtive:\n%s", data)
+	}
+	entries, _ := os.ReadDir(filepath.Dir(p))
+	if len(entries) != 1 {
+		t.Errorf("arquivo temporário deveria ter sumido, dir tem %d entradas", len(entries))
+	}
+	b2, err := Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(b, b2) {
+		t.Errorf("round-trip divergiu:\n%#v\n%#v", b, b2)
 	}
 }

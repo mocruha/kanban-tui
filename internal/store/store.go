@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 )
 
 const (
@@ -60,4 +61,36 @@ func Load(path string) (*Board, error) {
 		}
 	}
 	return &b, nil
+}
+
+// Save grava o board em path de forma atômica: escreve num temporário no
+// mesmo diretório, faz fsync e renomeia por cima. Assim, um crash no meio
+// da gravação nunca deixa board.json pela metade (o usuário edita esse
+// arquivo em outro editor também).
+func Save(path string, b *Board) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("criar diretório de %s: %w", path, err)
+	}
+	data, err := json.MarshalIndent(b, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".board-*.json")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName) // no-op depois do Rename bem-sucedido
+	if _, err := tmp.Write(append(data, '\n')); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
