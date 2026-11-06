@@ -229,8 +229,8 @@ func TestDeleteOnEmptyColumnSafe(t *testing.T) {
 
 func TestViewContents(t *testing.T) {
 	m := seededModel(t, "muito longo este título que não cabe na coluna e deve ser cortado")
-	m = send(t, m, "n")   // modo editor para checar render do input
-	m = send(t, m, "esc") // volta a browse
+	m = send(t, m, "n")        // modo editor para checar render do input
+	m = send(t, m, "esc")      // volta a browse
 	m.ti.SetValue("digitando") // (render do input é coberto em TestViewEditorVisible)
 	view := m.View()
 	for _, want := range []string{"A Fazer", "Fazendo", "Feito", "▸", "mover", "…"} {

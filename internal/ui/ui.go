@@ -208,6 +208,7 @@ func (m Model) updateEditor(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 }
+
 // ---- estilos ----
 var (
 	colInactive = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).Padding(0, 1)
