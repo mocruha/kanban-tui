@@ -1,9 +1,10 @@
 # kanban
 
 Quadro Kanban pessoal no terminal (Go + Bubble Tea). Por padrão, 3 colunas —
-A Fazer / Fazendo / Feito — empilhadas verticalmente (A Fazer no topo,
-Feito embaixo), cards com só título, salvos em JSON legível que você pode
-editar em qualquer editor.
+A Fazer / Fazendo / Feito — empilhadas de cima para baixo (A Fazer no topo,
+Feito embaixo), com os cards de cada coluna também empilhados, um por linha
+para o título caber por extenso. Salvos em JSON legível que você pode editar
+em qualquer editor.
 
 ## Instalação
     make install      # compila e instala em ~/local/bin/kanban
@@ -17,8 +18,8 @@ Ou, direto: `go build -o kanban .`
     kanban --file meukan.json
 
 ## Teclas
-    ↑ ↓        trocar coluna        1 … 9   mover o card p/ coluna
-    ← →        mover cursor         J / K   mover o card dentro da coluna
+    ← →        trocar coluna        1 … 9   mover o card p/ coluna
+    ↑ ↓        mover cursor         J / K   mover o card dentro da coluna
     Enter      editar título        n       novo card (fim da coluna)
     d d        apagar (2× confirma) u       desfazer
     Ctrl+Y     refazer              ?       ajuda completa
@@ -36,8 +37,9 @@ editor) alterou o arquivo durante a sessão, a versão do disco é guardada em
 
 ## Formato
 `{"columns":[{"title":"A Fazer","cards":["..."]}, ...]}` — N colunas
-(3 por padrão), empilhadas verticalmente: a primeira do JSON fica no topo e
-a última embaixo. Os títulos podem ser renomeados à mão e novas colunas
+(3 por padrão), empilhadas de cima para baixo: a primeira do JSON fica no
+topo e a última embaixo; dentro de cada coluna os cards vêm na ordem da
+lista, um por linha. Os títulos podem ser renomeados à mão e novas colunas
 podem ser adicionadas. O app recusa abrir (mostra o caminho e o motivo) se o
 JSON estiver corrompido, não houver coluna, houver título vazio/repetido ou o
 arquivo passar de 10 MiB; conserte na mão ou aponte `--file` para outro
