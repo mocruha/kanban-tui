@@ -60,19 +60,19 @@ func newTestModel() Model {
 
 func TestNavigationArrows(t *testing.T) {
 	m := newTestModel()
-	m = send(t, m, "right")
+	m = send(t, m, "down") // ↓ troca de coluna (lanes empilhadas verticalmente)
 	if m.col != 1 {
-		t.Errorf("right: queria col 1, obtive %d", m.col)
+		t.Errorf("down: queria col 1, obtive %d", m.col)
 	}
-	m = send(t, m, "left", "left", "left") // clamp na esquerda
+	m = send(t, m, "up", "up", "up") // clamp no topo
 	if m.col != 0 {
 		t.Errorf("clamp: queria col 0, obtive %d", m.col)
 	}
-	m = send(t, m, "right", "right", "right") // clamp na direita
+	m = send(t, m, "down", "down", "down") // clamp no fim
 	if m.col != 2 {
 		t.Errorf("clamp: queria col 2, obtive %d", m.col)
 	}
-	m = send(t, m, "up", "down") // colunas vazias: card fica 0, sem pânico
+	m = send(t, m, "left", "right") // colunas vazias: card fica 0, sem pânico
 	if m.card != 0 {
 		t.Errorf("card em coluna vazia deveria ser 0, obtive %d", m.card)
 	}
@@ -82,8 +82,8 @@ func TestWindowSizeMsg(t *testing.T) {
 	m := newTestModel()
 	cur, _ := m.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
 	out := cur.(Model)
-	if out.visibleRows != 6 { // 12 - 6 (margem fixa), dentro de [3,50]
-		t.Errorf("visibleRows: queria 6, obtive %d", out.visibleRows)
+	if out.width != 60 {
+		t.Errorf("width: queria 60, obtive %d", out.width)
 	}
 }
 
@@ -96,8 +96,8 @@ func seededModel(t *testing.T, col0 ...string) Model {
 
 func TestMoveCardToColumn(t *testing.T) {
 	m := seededModel(t, "a", "b")
-	m = send(t, m, "down") // foca "b"
-	m = send(t, m, "2")    // move para Fazendo
+	m = send(t, m, "right") // foca "b" (cards fluem horizontalmente)
+	m = send(t, m, "2")     // move para Fazendo
 	if got := m.cards(0); len(got) != 1 || got[0] != "a" {
 		t.Errorf("A Fazer deveria sobrar [a], obtive %#v", got)
 	}
@@ -167,7 +167,7 @@ func TestEditCancelledKeepsOriginal(t *testing.T) {
 
 func TestCommitEditReplacesInPlace(t *testing.T) {
 	m := seededModel(t, "um", "dois", "tres")
-	m = send(t, m, "down", "down", "enter") // abre edição de "tres"
+	m = send(t, m, "right", "right", "enter") // abre edição de "tres"
 	m.ti.SetValue("quatro")
 	m = send(t, m, "enter") // confirma
 	if got := m.cards(0); len(got) != 3 || got[2] != "quatro" {
@@ -190,7 +190,7 @@ func TestCommitNewAppendsAtEnd(t *testing.T) {
 
 func TestDeleteCard(t *testing.T) {
 	m := seededModel(t, "a", "b", "c")
-	m = send(t, m, "down", "down") // foca "c"
+	m = send(t, m, "right", "right") // foca "c"
 	m = send(t, m, "d")
 	if m.mode != modeConfirmDelete {
 		t.Fatal("'d' deveria pedir confirmação")
@@ -231,7 +231,7 @@ func TestDeleteAsksConfirmationInFooter(t *testing.T) {
 
 func TestUndoRestoresInPlace(t *testing.T) {
 	m := seededModel(t, "a", "b", "c")
-	m = send(t, m, "down", "d", "d") // apaga "b"
+	m = send(t, m, "right", "d", "d") // apaga "b"
 	m = send(t, m, "u")
 	if got := m.cards(0); len(got) != 3 || got[1] != "b" {
 		t.Errorf("undo deveria reinserir 'b' no índice 1: %#v", got)
@@ -394,10 +394,10 @@ func TestScrollKeepsFocusVisible(t *testing.T) {
 		cards = append(cards, fmt.Sprintf("card %02d", i))
 	}
 	m := seededModel(t, cards...)
-	cur, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 12}) // 6 linhas -> 5 visíveis
+	cur, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 12})
 	m = cur.(Model)
 	for range 39 {
-		m = send(t, m, "down")
+		m = send(t, m, "right")
 	}
 	if m.card != 39 {
 		t.Fatalf("cursor deveria estar no último card, obtive %d", m.card)
@@ -410,7 +410,7 @@ func TestScrollKeepsFocusVisible(t *testing.T) {
 		t.Errorf("topo da lista deveria ter saído da janela:\n%s", view)
 	}
 	for range 39 {
-		m = send(t, m, "up")
+		m = send(t, m, "left")
 	}
 	if !strings.Contains(m.View(), "card 00") {
 		t.Errorf("voltar ao topo deveria mostrar o card 00")
@@ -419,7 +419,7 @@ func TestScrollKeepsFocusVisible(t *testing.T) {
 
 func TestReorderWithinColumn(t *testing.T) {
 	m := seededModel(t, "a", "b", "c")
-	m = send(t, m, "down", "J") // "b" desce
+	m = send(t, m, "right", "J") // "b" desce (move p/ a direita)
 	if got := m.cards(0); got[0] != "a" || got[1] != "c" || got[2] != "b" {
 		t.Errorf("J deveria descer 'b': %#v", got)
 	}
@@ -440,7 +440,7 @@ func TestMoveToColumnThenReorderKeepsRelativeOrder(t *testing.T) {
 	b.Columns[0].Cards = []string{"a", "b"}
 	b.Columns[1].Cards = []string{"x", "y", "z"}
 	m := New(b, "/tmp/x.json")
-	m = send(t, m, "right", "down", "down") // "z" em Fazendo
+	m = send(t, m, "down", "right", "right") // "z" em Fazendo
 	m = send(t, m, "1")
 	if got := m.cards(0); len(got) != 3 || got[2] != "z" {
 		t.Errorf("deveria anexar 'z' no fim de A Fazer: %#v", got)
@@ -450,6 +450,55 @@ func TestMoveToColumnThenReorderKeepsRelativeOrder(t *testing.T) {
 	}
 	if got := m.cards(1); len(got) != 2 || got[0] != "x" || got[1] != "y" {
 		t.Errorf("coluna de origem deveria manter ordem: %#v", got)
+	}
+}
+
+func TestFourColumnsSupported(t *testing.T) {
+	b := &store.Board{Columns: []store.Column{
+		{Title: "Backlog", Cards: []string{"a"}},
+		{Title: "A Fazer", Cards: []string{}},
+		{Title: "Fazendo", Cards: []string{}},
+		{Title: "Feito", Cards: []string{}},
+	}}
+	m := New(b, "/tmp/x.json")
+	m = send(t, m, "4") // dígito 4 move "a" p/ a 4ª coluna
+	if got := m.cards(3); len(got) != 1 || got[0] != "a" {
+		t.Errorf("dígito 4 deveria mover p/ a 4ª coluna: %#v", got)
+	}
+	if m.col != 3 {
+		t.Errorf("cursor deveria ir p/ col 3, obtive %d", m.col)
+	}
+	// ↑↓ navega pelas 4 lanes
+	m = send(t, m, "up", "up", "up")
+	if m.col != 0 {
+		t.Errorf("up x3 deveria voltar p/ col 0, obtive %d", m.col)
+	}
+	m = send(t, m, "down", "down", "down")
+	if m.col != 3 {
+		t.Errorf("down x3 deveria chegar na col 3, obtive %d", m.col)
+	}
+	// footer anuncia o intervalo de colunas
+	m.width = 200
+	if v := m.View(); !strings.Contains(v, "1-4") {
+		t.Errorf("footer/ajuda deveria anunciar 1-4:\n%s", v)
+	}
+}
+
+func TestFocusedCardVisibleWithIndicator(t *testing.T) {
+	var cards []string
+	for i := range 20 {
+		cards = append(cards, fmt.Sprintf("c%02d", i))
+	}
+	m := seededModel(t, cards...)
+	m.width = 50 // content 46 -> perRow 2 -> 1 card + indicador ↕
+	for range 18 {
+		m = send(t, m, "right")
+	}
+	if m.card != 18 {
+		t.Fatalf("cursor deveria ser 18, obtive %d", m.card)
+	}
+	if v := m.View(); !strings.Contains(v, "c18") {
+		t.Errorf("card focado deveria estar visível mesmo com indicador:\n%s", v)
 	}
 }
 
