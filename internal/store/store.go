@@ -26,8 +26,8 @@ type Column struct {
 	Cards []string `json:"cards"`
 }
 
-// Board é o quadro inteiro. Sempre exatamente 3 colunas, na ordem
-// A Fazer / Fazendo / Feito.
+// Board é o quadro inteiro. Suporta N colunas (≥ 1), na ordem em que estão
+// gravadas; Default() cria as três fixas A Fazer / Fazendo / Feito.
 type Board struct {
 	Columns []Column `json:"columns"`
 
@@ -75,8 +75,8 @@ func Load(path string) (*Board, error) {
 	if err := json.Unmarshal(data, &b); err != nil {
 		return nil, fmt.Errorf("JSON inválido em %s: %w", path, err)
 	}
-	if len(b.Columns) != 3 {
-		return nil, fmt.Errorf("%s: esperava 3 colunas, achei %d", path, len(b.Columns))
+	if len(b.Columns) == 0 {
+		return nil, fmt.Errorf("%s: esperava ao menos 1 coluna, achei 0", path)
 	}
 	seen := make(map[string]bool, len(b.Columns))
 	for i := range b.Columns {

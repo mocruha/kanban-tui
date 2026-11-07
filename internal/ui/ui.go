@@ -60,7 +60,7 @@ type Model struct {
 	Board *store.Board
 	Path  string
 
-	col    int   // coluna selecionada, 0..2
+	col    int   // coluna selecionada, 0..len(Columns)-1
 	card   int   // índice do card focado dentro da coluna
 	scroll []int // topo da janela visível de cada coluna
 
@@ -84,7 +84,7 @@ type Model struct {
 	BackedUp bool
 
 	width       int
-	visibleRows int
+	visibleRows int // linhas disponíveis p/ o quadro (sem cabeçalho/rodapé)
 }
 
 // SaveResultMsg devolve ao Model o desfecho de uma gravação (erro ou conflito).
@@ -269,7 +269,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		m.visibleRows = max(3, min(msg.Height-6, 50))
+		// -4: cabeçalho, duas linhas em branco e rodapé do View.
+		m.visibleRows = max(msg.Height-4, 8)
 		return m, nil
 
 	case tea.KeyMsg:
@@ -314,15 +315,6 @@ func (m Model) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if n := len(m.cards(m.col)); n > 0 {
 			m.card = min(m.card+1, n-1)
 		}
-	case "1", "2", "3":
-		target, ok := m.columnForDigit(msg.String()[0])
-		if !ok {
-			return m, nil
-		}
-		m.pushUndo()
-		m.moveFocusedToColumn(target)
-		m.scroll[target] = max(len(m.Board.Columns[target].Cards)-1, 0) // fim da lista: card novo à vista
-		return m.changed()
 	case "J", "K":
 		delta := 1
 		if msg.String() == "K" {
@@ -368,6 +360,18 @@ func (m Model) updateBrowse(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ti.CursorEnd()
 		m.ti.Focus()
 		return m, nil
+	}
+	// Dígitos 1..9 movem o card para a coluna correspondente; colunas acima
+	// da 9ª continuam acessíveis pelas setas ↑↓.
+	if s := msg.String(); len(s) == 1 && s[0] >= '1' && s[0] <= '9' {
+		target, ok := m.columnForDigit(s[0])
+		if !ok {
+			return m, nil
+		}
+		m.pushUndo()
+		m.moveFocusedToColumn(target)
+		m.scroll[target] = max(len(m.Board.Columns[target].Cards)-1, 0) // fim da lista: card novo à vista
+		return m.changed()
 	}
 	return m, nil
 }
@@ -468,46 +472,50 @@ func window(top, n, idx, total int) int {
 	return min(max(top, 0), max(total-n, 0))
 }
 
-// columnView desenha uma coluna. outerW é a largura TOTAL da caixa (com borda
-// e padding); conteúdo = outerW-4. Cabeçalho sempre mostra o total, então a
-// lista pode ser cortada por altura sem esconder informação.
-func (m Model) columnView(i, outerW int) string {
+// laneView desenha uma coluna como uma faixa de largura total, com os cards
+// empilhados um por linha (título por extenso, sem colunas lado a lado).
+// budget é quantas linhas de corpo cabem nesta lane.
+func (m Model) laneView(i, w, budget int) string {
 	col := m.Board.Columns[i]
 	active := i == m.col && (m.mode == modeBrowse || m.mode == modeConfirmDelete)
-	content := outerW - 4
+	content := w - 4
 
 	lines := []string{header.Render(truncate(fmt.Sprintf("%s (%d)", col.Title, len(col.Cards)), content))}
-	budget := m.visibleRows - 1 // -1: reserva linha p/ o indicador de corte
-	if budget < 1 {
-		budget = 1
-	}
-	// O cursor da coluna ativa sempre precisa caber na janela visível.
-	focusIdx := m.card
-	if !active && !(m.mode != modeBrowse && i == m.col) {
-		focusIdx = m.scroll[i]
-	}
-	top := window(m.scroll[i], budget, focusIdx, len(col.Cards))
-	shown := min(len(col.Cards)-top, budget)
-
-	for j := top; j < top+shown; j++ {
-		txt := truncate(col.Cards[j], content-3) // " ▸ " custa 3 células
-		if active && j == m.card {
-			lines = append(lines, cardFocused.Render(" ▸ "+txt))
-		} else {
-			lines = append(lines, "   "+txt) // mesmo prefixo de 3 células do foco
-		}
-	}
-	if hidden := len(col.Cards) - shown; hidden > 0 {
-		lines = append(lines, dim.Render(fmt.Sprintf("    ↕ %d/%d", top+shown, len(col.Cards))))
-	}
-	if m.mode != modeBrowse && i == m.col {
+	switch {
+	case m.mode != modeBrowse && i == m.col:
 		m.ti.Width = max(content-3, 1)
 		lines = append(lines, " ✎ "+m.ti.View())
+	case len(col.Cards) == 0:
+		lines = append(lines, dim.Render("   (vazio)"))
+	default:
+		// Se a lista não cabe inteira, uma linha do budget vira o indicador.
+		vis := budget
+		if len(col.Cards) > budget {
+			vis = max(budget-1, 1)
+		}
+		focus := m.card
+		if !active {
+			focus = m.scroll[i]
+		}
+		top := window(m.scroll[i], vis, focus, len(col.Cards))
+		shown := min(len(col.Cards)-top, vis)
+		for j := top; j < top+shown; j++ {
+			txt := truncate(col.Cards[j], content-3) // " ▸ " custa 3 células
+			if active && j == m.card {
+				lines = append(lines, cardFocused.Render(" ▸ "+txt))
+			} else {
+				lines = append(lines, "   "+txt) // mesmo prefixo de 3 células do foco
+			}
+		}
+		if hidden := len(col.Cards) - (top + shown); hidden > 0 {
+			lines = append(lines, dim.Render(fmt.Sprintf("    ↕ %d/%d", top+shown, len(col.Cards))))
+		}
 	}
+
 	if active {
-		return colActive.Width(outerW).Render(strings.Join(lines, "\n"))
+		return colActive.Width(w).Render(strings.Join(lines, "\n"))
 	}
-	return colInactive.Width(outerW).Render(strings.Join(lines, "\n"))
+	return colInactive.Width(w).Render(strings.Join(lines, "\n"))
 }
 
 // footer lista SÓ as teclas válidas agora (atalho morto treina o usuário a
@@ -521,7 +529,12 @@ func (m Model) footer() string {
 	case modeNew, modeEdit:
 		return dim.Render(truncate("Enter confirma · Esc cancela", w))
 	case modeHelp:
-		return dim.Render(truncate("←→ coluna · ↑↓ card · Enter editar · n novo · d apagar (dd) · J/K reordenar · 1-3 mover p/ coluna · u desfazer · Ctrl+Y refazer · ? fechar", w))
+		help := "←→ coluna · ↑↓ card · Enter editar · n novo · d apagar (dd) · J/K reordenar"
+		if n := len(m.Board.Columns); n > 1 {
+			help += fmt.Sprintf(" · 1-%d mover p/ coluna", n)
+		}
+		help += " · u desfazer · Ctrl+Y refazer · ? fechar"
+		return dim.Render(truncate(help, w))
 	case modeConfirmDelete:
 		return confirmStyleB.Render(truncate(fmt.Sprintf("Apagar %q? d confirma · qualquer outra tecla cancela", truncate(m.cards(m.col)[m.card], 40)), w))
 	}
@@ -550,15 +563,15 @@ func (m Model) footer() string {
 
 func (m Model) View() string {
 	w := max(m.width, 30)
-	outer := (w - 6) / 3
-	if outer < 12 {
-		outer = 12
-	}
-	cols := make([]string, len(m.Board.Columns))
+	n := len(m.Board.Columns)
+	// Cada lane ocupa 3 linhas fixas (borda topo, cabeçalho, borda base) mais
+	// o corpo; as lanes são separadas por 1 quebra de linha cada.
+	budget := max((m.visibleRows-(n-1)-3*n)/max(n, 1), 1)
+	lanes := make([]string, n)
 	for i := range m.Board.Columns {
-		cols[i] = m.columnView(i, outer)
+		lanes[i] = m.laneView(i, w, budget)
 	}
-	top := lipgloss.JoinHorizontal(lipgloss.Top, cols...)
+	board := strings.Join(lanes, "\n")
 	head := truncate(fmt.Sprintf("kanban · %s · ? ajuda", m.Path), w)
-	return head + "\n\n" + top + "\n\n" + m.footer() + "\n"
+	return head + "\n\n" + board + "\n\n" + m.footer() + "\n"
 }

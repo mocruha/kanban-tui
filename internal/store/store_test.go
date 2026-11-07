@@ -67,15 +67,34 @@ func TestLoadInvalidJSON(t *testing.T) {
 	}
 }
 
-func TestLoadWrongColumnCount(t *testing.T) {
+func TestLoadRejectsZeroColumns(t *testing.T) {
 	dir := t.TempDir()
 	p := dir + "/board.json"
-	if err := writeFile(p, `{"columns":[{"title":"A Fazer","cards":[]}]}`); err != nil {
+	if err := writeFile(p, `{"columns":[]}`); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Load(p)
-	if err == nil {
-		t.Fatal("1 coluna deve dar erro (esperava 3)")
+	if _, err := Load(p); err == nil {
+		t.Fatal("0 colunas deve dar erro")
+	}
+}
+
+func TestLoadAcceptsVariableColumns(t *testing.T) {
+	dir := t.TempDir()
+	p := dir + "/board.json"
+	content := `{"columns":[
+		{"title":"Backlog","cards":[]},
+		{"title":"A Fazer","cards":["x"]},
+		{"title":"Fazendo","cards":[]},
+		{"title":"Feito","cards":[]}]}`
+	if err := writeFile(p, content); err != nil {
+		t.Fatal(err)
+	}
+	b, err := Load(p)
+	if err != nil {
+		t.Fatalf("4 colunas deveriam carregar: %v", err)
+	}
+	if len(b.Columns) != 4 || b.Columns[0].Title != "Backlog" || b.Columns[1].Cards[0] != "x" {
+		t.Errorf("colunas customizadas deveriam ser preservadas: %#v", b.Columns)
 	}
 }
 
